@@ -20,10 +20,11 @@ from app.database import (
     set_status,
     get_setting,
     set_setting,
-    get_path_mappings,
-    set_path_mappings,
+    get_library_paths,
+    set_library_paths,
     is_setup_complete,
     mark_setup_complete,
+    reset_app_state,
 )
 from app.radarr import fetch_movies
 
@@ -66,7 +67,7 @@ def _setup_payload() -> dict:
         "setupComplete": is_setup_complete(),
         "radarrUrl": get_setting("radarr_url", ""),
         "radarrApiKeySet": bool(get_setting("radarr_api_key", "").strip()),
-        "pathMappings": get_path_mappings(),
+        "libraryPaths": get_library_paths(),
     }
 
 
@@ -90,15 +91,10 @@ def setup_status():
     return _setup_payload()
 
 
-class PathMapping(BaseModel):
-    source: str = Field(min_length=1)
-    target: str = Field(min_length=1)
-
-
 class SetupRequest(BaseModel):
     radarr_url: str = Field(min_length=1)
     radarr_api_key: str = ""
-    path_mappings: list[PathMapping] = Field(default_factory=list)
+    library_paths: list[str] = Field(default_factory=list)
 
 
 @app.post("/api/setup")
@@ -108,10 +104,20 @@ def save_setup(req: SetupRequest):
     if not api_key:
         raise HTTPException(status_code=400, detail="Radarr API key is required")
 
+    library_paths = [p.strip().rstrip("/") for p in req.library_paths if p.strip()]
+    if not library_paths:
+        raise HTTPException(status_code=400, detail="At least one local library path is required")
+
     set_setting("radarr_url", req.radarr_url.strip())
     set_setting("radarr_api_key", api_key)
-    set_path_mappings([mapping.model_dump() for mapping in req.path_mappings])
+    set_library_paths(library_paths)
     mark_setup_complete()
+    return _setup_payload()
+
+
+@app.post("/api/setup/reset")
+def reset_setup():
+    reset_app_state()
     return _setup_payload()
 
 

@@ -6,6 +6,7 @@ let activeMovieId = null;
 const movieList     = document.getElementById('movie-list');
 const searchInput   = document.getElementById('search-input');
 const btnSync       = document.getElementById('btn-sync');
+const btnSettings   = document.getElementById('btn-settings');
 const syncStatus    = document.getElementById('sync-status');
 const rightEmpty    = document.getElementById('right-empty');
 const rightLoading  = document.getElementById('right-loading');
@@ -23,14 +24,19 @@ const updateModal   = document.getElementById('update-modal');
 const updateModalLogs = document.getElementById('update-modal-logs');
 const updateModalStatus = document.getElementById('update-modal-status');
 const updateModalClose = document.getElementById('update-modal-close');
+const pathModal     = document.getElementById('path-modal');
+const pathModalRows = document.getElementById('path-modal-rows');
+const pathModalStatus = document.getElementById('path-modal-status');
+const pathModalClose = document.getElementById('path-modal-close');
+const pathModalAdd = document.getElementById('path-modal-add');
+const pathModalSave = document.getElementById('path-modal-save');
 const setupScreen   = document.getElementById('setup-screen');
 const appShell      = document.getElementById('app-shell');
 const setupForm     = document.getElementById('setup-form');
 const setupStatus   = document.getElementById('setup-status');
 const setupRadarrUrl = document.getElementById('setup-radarr-url');
 const setupRadarrApiKey = document.getElementById('setup-radarr-api-key');
-const setupMappings = document.getElementById('setup-mappings');
-const setupAddMapping = document.getElementById('setup-add-mapping');
+const setupMappingsSummary = document.getElementById('setup-mappings-summary');
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 let toastTimer = null;
@@ -56,48 +62,83 @@ function setAppVisible(isVisible) {
   }
 }
 
-function createMappingRow(source = '', target = '') {
+let libraryPathsState = [];
+
+function setPathModalVisible(isVisible) {
+  if (isVisible) {
+    pathModal.classList.remove('hidden');
+    pathModal.classList.add('flex');
+  } else {
+    pathModal.classList.add('hidden');
+    pathModal.classList.remove('flex');
+  }
+}
+
+function createMappingRow(path = '') {
   const row = document.createElement('div');
-  row.className = 'mapping-row grid gap-3 sm:grid-cols-[1fr_1fr_auto]';
+  row.className = 'mapping-row grid gap-3 sm:grid-cols-[1fr_auto]';
   row.innerHTML = `
-    <input type="text" class="mapping-source rounded-xl border border-white/10 bg-gray-950 px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40" placeholder="/radarr/movies" value="${esc(source)}" />
-    <input type="text" class="mapping-target rounded-xl border border-white/10 bg-gray-950 px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40" placeholder="/movies" value="${esc(target)}" />
+    <input type="text" class="mapping-path rounded-xl border border-white/10 bg-gray-950 px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40" placeholder="/mnt/movies" value="${esc(path)}" />
     <button type="button" class="mapping-remove rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-gray-200 transition hover:bg-white/10">Remove</button>
   `;
   row.querySelector('.mapping-remove').addEventListener('click', () => {
     row.remove();
-    if (!setupMappings.children.length) {
-      setupMappings.appendChild(createMappingRow());
+    if (!pathModalRows.children.length) {
+      pathModalRows.appendChild(createMappingRow());
     }
   });
   return row;
 }
 
 function renderMappingRows(mappings = []) {
-  setupMappings.innerHTML = '';
+  pathModalRows.innerHTML = '';
   if (!mappings.length) {
-    setupMappings.appendChild(createMappingRow());
+    pathModalRows.appendChild(createMappingRow());
     return;
   }
-  mappings.forEach(mapping => setupMappings.appendChild(createMappingRow(mapping.source, mapping.target)));
+  mappings.forEach(path => pathModalRows.appendChild(createMappingRow(path)));
 }
 
 function collectMappings() {
-  return Array.from(setupMappings.querySelectorAll('.mapping-row'))
-    .map(row => ({
-      source: row.querySelector('.mapping-source').value.trim(),
-      target: row.querySelector('.mapping-target').value.trim(),
-    }))
-    .filter(mapping => mapping.source && mapping.target);
+  return Array.from(pathModalRows.querySelectorAll('.mapping-row'))
+    .map(row => row.querySelector('.mapping-path').value.trim())
+    .filter(path => path);
+}
+
+function renderMappingSummary(mappings = []) {
+  setupMappingsSummary.innerHTML = '';
+  if (!mappings.length) {
+    setupMappingsSummary.innerHTML = '<p class="text-xs text-gray-500">No local library paths added yet.</p>';
+    return;
+  }
+
+  mappings.forEach(path => {
+    const pill = document.createElement('div');
+    pill.className = 'flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3';
+    pill.innerHTML = `
+      <div class="min-w-0">
+        <p class="truncate text-sm font-semibold text-white">${esc(path)}</p>
+        <p class="text-xs text-gray-500">Stored inside the app database</p>
+      </div>
+      <button type="button" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-gray-100 transition hover:bg-white/10">Edit</button>
+    `;
+    pill.querySelector('button').addEventListener('click', () => {
+      renderMappingRows(libraryPathsState);
+      pathModalStatus.textContent = '';
+      setPathModalVisible(true);
+    });
+    setupMappingsSummary.appendChild(pill);
+  });
 }
 
 async function loadSetupState() {
   const state = await api('GET', '/api/setup/status');
+  libraryPathsState = state.libraryPaths || [];
   if (!state.setupComplete) {
     setupRadarrUrl.value = state.radarrUrl || 'http://radarr:7878';
     setupRadarrApiKey.value = '';
     setupRadarrApiKey.placeholder = state.radarrApiKeySet ? 'Leave blank to keep existing key' : 'Enter your Radarr API key';
-    renderMappingRows(state.pathMappings || []);
+    renderMappingSummary(libraryPathsState);
     setAppVisible(false);
     setupStatus.textContent = 'Complete the fields below to finish setup.';
     return false;
@@ -105,6 +146,28 @@ async function loadSetupState() {
 
   setAppVisible(true);
   return true;
+}
+
+async function resetAppToSetup() {
+  const confirmed = window.confirm('Reset Themearr and return to setup? This clears saved settings and synced movie data.');
+  if (!confirmed) return;
+
+  try {
+    await api('POST', '/api/setup/reset');
+    allMovies = [];
+    activeMovieId = null;
+    renderList('');
+    updateStats();
+    rightContent.classList.add('hidden');
+    rightLoading.classList.add('hidden');
+    rightEmpty.classList.remove('hidden');
+    syncStatus.textContent = '';
+    setAppVisible(false);
+    await loadSetupState();
+    showToast('App reset. Complete setup to continue.');
+  } catch (e) {
+    showToast(`Reset failed: ${e.message}`, 'error');
+  }
 }
 
 /* ── API helpers ─────────────────────────────────────────────────────────── */
@@ -172,8 +235,24 @@ async function loadMovies() {
   }
 }
 
-setupAddMapping?.addEventListener('click', () => {
-  setupMappings.appendChild(createMappingRow());
+document.getElementById('setup-open-mappings')?.addEventListener('click', () => {
+  renderMappingRows(libraryPathsState);
+  pathModalStatus.textContent = '';
+  setPathModalVisible(true);
+});
+
+pathModalClose?.addEventListener('click', () => setPathModalVisible(false));
+
+pathModalAdd?.addEventListener('click', () => {
+  pathModalRows.appendChild(createMappingRow());
+});
+
+pathModalSave?.addEventListener('click', () => {
+  const paths = collectMappings();
+  libraryPathsState = paths;
+  renderMappingSummary(libraryPathsState);
+  pathModalStatus.textContent = 'Paths updated. Save setup to apply them.';
+  setPathModalVisible(false);
 });
 
 setupForm?.addEventListener('submit', async (event) => {
@@ -184,7 +263,7 @@ setupForm?.addEventListener('submit', async (event) => {
     const payload = {
       radarr_url: setupRadarrUrl.value.trim(),
       radarr_api_key: setupRadarrApiKey.value.trim(),
-      path_mappings: collectMappings(),
+      library_paths: libraryPathsState,
     };
     const state = await api('POST', '/api/setup', payload);
     setupStatus.textContent = 'Setup saved. Loading app...';
@@ -323,6 +402,7 @@ async function triggerUpdate() {
 }
 
 btnUpdate?.addEventListener('click', triggerUpdate);
+btnSettings?.addEventListener('click', resetAppToSetup);
 updateModalClose?.addEventListener('click', () => {
   if (updateStatusTimer) return;
   setUpdateModalVisible(false);

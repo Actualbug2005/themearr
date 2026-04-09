@@ -33,18 +33,18 @@
           </div>
           <h1 class="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">Configure Themearr in the browser</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-gray-300 sm:text-base">
-            Enter your Radarr details and map the movie library paths that are mounted into this LXC.
+            Enter your Radarr details and add the local movie library paths mounted into this LXC.
             No `.env` file is needed. Save once and the app will use these settings from its database.
           </p>
 
           <div class="mt-8 grid gap-4 sm:grid-cols-2">
             <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
               <p class="text-xs uppercase tracking-[0.18em] text-gray-400">Radarr</p>
-              <p class="mt-2 text-sm text-gray-200">URL, API key, and path mappings are stored inside the app.</p>
+              <p class="mt-2 text-sm text-gray-200">URL and API key are stored inside the app.</p>
             </div>
             <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
               <p class="text-xs uppercase tracking-[0.18em] text-gray-400">Paths</p>
-              <p class="mt-2 text-sm text-gray-200">Use local container paths for the target side of each mapping.</p>
+              <p class="mt-2 text-sm text-gray-200">Use local container paths only, like /mnt/movies.</p>
             </div>
           </div>
         </section>
@@ -66,13 +66,13 @@
 
             <div>
               <div class="mb-2 flex items-center justify-between gap-3">
-                <label class="block text-sm font-medium text-gray-200">Movie path mappings</label>
-                <button id="setup-add-mapping" type="button" class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-100 transition hover:bg-white/10">
-                  Add mapping
+                <label class="block text-sm font-medium text-gray-200">Local library paths</label>
+                <button id="setup-open-mappings" type="button" class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-100 transition hover:bg-white/10">
+                  Add path
                 </button>
               </div>
-              <p class="mb-3 text-xs text-gray-500">Map the Radarr source path to the local folder mounted into this LXC.</p>
-              <div id="setup-mappings" class="space-y-3"></div>
+              <p class="mb-3 text-xs text-gray-500">Themearr will scan these local paths and match folders to Radarr movie titles.</p>
+              <div id="setup-mappings-summary" class="space-y-2"></div>
             </div>
 
             <div class="flex items-center justify-between gap-3 pt-2">
@@ -106,6 +106,15 @@
           <button id="btn-update" class="rounded bg-amber-500 px-2 py-0.5 font-semibold text-black hover:bg-amber-400">Upgrade</button>
         </div>
         <span id="sync-status" class="text-sm text-gray-400"></span>
+        <button id="btn-settings"
+                class="flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-4 py-1.5 text-sm font-medium transition-colors hover:bg-white/10">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10.325 4.317a1 1 0 011.35-.936l.86.397a1 1 0 00.95 0l.86-.397a1 1 0 011.35.936l.101.943a1 1 0 00.61.83l.87.374a1 1 0 01.555 1.304l-.33.887a1 1 0 000 .7l.33.887a1 1 0 01-.555 1.304l-.87.374a1 1 0 00-.61.83l-.1.943a1 1 0 01-1.35.936l-.86-.397a1 1 0 00-.95 0l-.86.397a1 1 0 01-1.35-.936l-.1-.943a1 1 0 00-.61-.83l-.87-.374a1 1 0 01-.555-1.304l.33-.887a1 1 0 000-.7l-.33-.887a1 1 0 01.555-1.304l.87-.374a1 1 0 00.61-.83l.1-.943z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9a3 3 0 100 6 3 3 0 000-6z"/>
+          </svg>
+          Settings
+        </button>
         <button id="btn-sync"
                 class="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium transition-colors hover:bg-indigo-500">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -187,6 +196,41 @@
       </div>
       <div class="bg-black px-5 py-4">
         <pre id="update-modal-logs" class="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-white/10 bg-gray-900 p-4 text-xs leading-5 text-green-200"></pre>
+      </div>
+    </div>
+  </div>
+
+  <div id="path-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 px-4 py-6">
+    <div class="w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-gray-950 shadow-2xl shadow-black/60">
+      <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+        <div>
+          <h3 class="text-lg font-bold text-white">Local library paths</h3>
+          <p class="mt-1 text-sm text-gray-400">Add each mounted local path that contains movie folders.</p>
+        </div>
+        <button id="path-modal-close" type="button" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-gray-100 transition hover:bg-white/10">
+          Close
+        </button>
+      </div>
+      <div class="space-y-4 px-5 py-4">
+        <div class="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          The browser cannot browse the LXC filesystem directly. Add paths manually here, for example <span class="font-semibold">/mnt/folder</span> and <span class="font-semibold">/mnt/folder2</span>.
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-white">Paths</p>
+            <p class="text-xs text-gray-400">Each path should be a mounted local movie folder root.</p>
+          </div>
+          <button id="path-modal-add" type="button" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500">
+            Add row
+          </button>
+        </div>
+        <div id="path-modal-rows" class="space-y-3"></div>
+      </div>
+      <div class="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-4">
+        <span id="path-modal-status" class="text-sm text-gray-400"></span>
+        <button id="path-modal-save" type="button" class="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500">
+          Save paths
+        </button>
       </div>
     </div>
   </div>

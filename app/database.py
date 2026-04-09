@@ -149,9 +149,48 @@ def set_path_mappings(mappings: list[dict]):
     set_setting("path_mappings", json.dumps(normalized))
 
 
+def get_library_paths() -> list[str]:
+    raw = get_setting("library_paths", "[]")
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError:
+        values = []
+
+    result = []
+    for value in values:
+        path = str(value).strip().rstrip("/")
+        if path:
+            result.append(path)
+
+    # Backward compatibility for older installs that only have path_mappings saved.
+    if not result:
+        for item in get_path_mappings():
+            target = str(item.get("target", "")).strip().rstrip("/")
+            if target and target not in result:
+                result.append(target)
+
+    return result
+
+
+def set_library_paths(paths: list[str]):
+    normalized = []
+    for value in paths:
+        path = str(value).strip().rstrip("/")
+        if path and path not in normalized:
+            normalized.append(path)
+    set_setting("library_paths", json.dumps(normalized))
+
+
 def is_setup_complete() -> bool:
     return get_setting("setup_complete", "0") == "1"
 
 
 def mark_setup_complete():
     set_setting("setup_complete", "1")
+
+
+def reset_app_state():
+    with get_conn() as conn:
+        conn.execute("DELETE FROM movies")
+        conn.execute("DELETE FROM settings")
+        conn.commit()
