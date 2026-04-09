@@ -18,6 +18,7 @@ fi
 # 3. Clone the repository to the temporary zone
 echo ">>> Cloning repository..."
 git clone https://github.com/Actuallbug2005/themearr.git "$SRC_DIR"
+git -C "$SRC_DIR" rev-parse --short=12 HEAD > "$SRC_DIR/VERSION"
 
 # 4. Safely wipe old application code (preserves database and .env)
 echo ">>> Preparing target directory..."
@@ -34,5 +35,5 @@ bash install.sh
 rm -rf "$SRC_DIR"
 
 echo ">>> Deployment Complete!"
-echo ">>> Action Required: Configure /opt/themearr/.env with your Radarr credentials."
+echo ">>> Action Required: Configure /opt/themearr/.env with your Radarr credentials and RADARR_PATH_MAP."
 echo ">>> Then run: systemctl restart themearr"

@@ -50,6 +50,27 @@ mkdir -p "${APP_DIR}/data"
 # Copy application source
 cp -r app/         "${APP_DIR}/app"
 cp    requirements.txt "${APP_DIR}/requirements.txt"
+if [ -f VERSION ]; then
+    cp VERSION "${APP_DIR}/VERSION"
+fi
+
+# Install helper updater command used by the web UI update action.
+cat > /usr/local/bin/themearr-update <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+TMP_DEPLOY="/tmp/themearr-deploy.sh"
+curl -fsSL https://raw.githubusercontent.com/Actuallbug2005/themearr/main/deploy.sh -o "$TMP_DEPLOY"
+bash "$TMP_DEPLOY"
+systemctl restart themearr
+EOF
+chmod 755 /usr/local/bin/themearr-update
+
+# Allow service user to run only the dedicated updater command without a password.
+cat > /etc/sudoers.d/themearr-update <<'EOF'
+themearr ALL=(root) NOPASSWD: /usr/local/bin/themearr-update
+EOF
+chmod 440 /etc/sudoers.d/themearr-update
 
 # Create .env from example if one doesn't exist yet
 if [ ! -f "${APP_DIR}/.env" ]; then
@@ -73,5 +94,6 @@ systemctl enable themearr.service
 
 echo ""
 echo "✔  Installation complete."
-echo "   Edit ${APP_DIR}/.env, then run:  systemctl start themearr"
+echo "   Edit ${APP_DIR}/.env (API keys + RADARR_PATH_MAP), then run: systemctl start themearr"
+echo "   App updates can be triggered from the UI when a new GHCR package is published."
 echo "   Logs:                            journalctl -u themearr -f"

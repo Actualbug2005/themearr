@@ -3,12 +3,7 @@ set -e
 
 # ── 1. Dynamic Variables & UI Prompts ─────────────────────────────────────────
 CTID=$(pvesh get /cluster/nextid)
-
-# Prompt for Storage Pool
-STORAGE=$(whiptail --title "Storage Pool" --inputbox "Enter the Proxmox storage pool for the LXC disk:" 10 58 "local-lvm" 3>&1 1>&2 2>&3)
-
-# Prompt for Host Mount Path
-HOST_MOVIE_MOUNT=$(whiptail --title "Host Movie Mount" --inputbox "Enter the absolute path to your SMB movie mount on this Proxmox host:" 10 58 "/mnt/pve/nas_movies" 3>&1 1>&2 2>&3)
+STORAGE="local-lvm"
 
 GITHUB_DEPLOY_URL="https://raw.githubusercontent.com/Actuallbug2005/themearr/main/deploy.sh"
 
@@ -39,10 +34,8 @@ pct create $CTID $TEMPLATE \
   --unprivileged 1 \
   --features nesting=1
 
-# ── 4. Storage & Namespace Mapping ────────────────────────────────────────────
-echo "[3/6] Injecting Bind Mounts and UID/GID Maps..."
-
-pct set $CTID -mp0 "$HOST_MOVIE_MOUNT",mp=/movies
+# ── 4. Namespace Mapping ───────────────────────────────────────────────────────
+echo "[3/6] Applying UID/GID Maps..."
 
 # Inject UID 1000 mapping for SMB permission parity
 cat <<EOF >> /etc/pve/lxc/$CTID.conf
@@ -75,6 +68,7 @@ echo "────────────────────────�
 echo "✔ Deployment Complete."
 echo "  Container ID: $CTID"
 echo "  Container IP:" $(pct exec $CTID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-echo "  Action Required: Run 'pct exec $CTID -- nano /opt/themearr/.env' to set API keys."
+echo "  Action Required: Run 'pct exec $CTID -- nano /opt/themearr/.env' to set API keys and path mappings."
+echo "  Example path mapping: RADARR_PATH_MAP=/radarr/media=/movies"
 echo "  Then run: 'pct exec $CTID -- systemctl restart themearr'"
 echo "─────────────────────────────────────────────────────────────────"

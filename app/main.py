@@ -1,8 +1,10 @@
 import os
 import subprocess
 import logging
+import threading
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -18,6 +20,13 @@ log = logging.getLogger("themearr")
 app = FastAPI(title="Themearr")
 
 STATIC_DIR = Path(__file__).parent / "static"
+VERSION_FILE = Path(os.getenv("THEMEARR_VERSION_FILE", "/opt/themearr/VERSION"))
+GITHUB_REPO = os.getenv("GITHUB_REPO", "Actuallbug2005/themearr")
+UPDATER_CMD = os.getenv("THEMEARR_UPDATER_CMD", "sudo /usr/local/bin/themearr-update")
+
+_update_lock = threading.Lock()
+_update_in_progress = False
+_update_error = ""
 
 
 @app.on_event("startup")
@@ -77,6 +86,85 @@ def search_youtube(movie_id: int):
 class DownloadRequest(BaseModel):
     movie_id: int
     video_id: str
+
+
+def _current_version() -> str:
+    env_version = os.getenv("APP_VERSION", "").strip()
+    if env_version:
+        return env_version
+
+    if VERSION_FILE.exists():
+        value = VERSION_FILE.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    return "dev"
+
+
+def _latest_main_version() -> str:
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/commits/main"
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "themearr"}
+    resp = httpx.get(url, timeout=10, headers=headers)
+    resp.raise_for_status()
+    return resp.json()["sha"][:12]
+
+
+def _run_update() -> None:
+    global _update_in_progress, _update_error
+    try:
+        subprocess.run(
+            UPDATER_CMD,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception as exc:
+        log.exception("Update failed")
+        _update_error = str(exc)
+    finally:
+        _update_in_progress = False
+
+
+@app.get("/api/version")
+def app_version():
+    current = _current_version()
+    latest = ""
+    check_error = ""
+
+    try:
+        latest = _latest_main_version()
+    except Exception as exc:
+        log.warning("Version check failed: %s", exc)
+        check_error = str(exc)
+
+    return {
+        "current": current,
+        "latest": latest,
+        "updateAvailable": bool(latest and current != latest),
+        "updating": _update_in_progress,
+        "updateError": _update_error,
+        "checkError": check_error,
+        "repo": GITHUB_REPO,
+    }
+
+
+@app.post("/api/update")
+def app_update():
+    global _update_in_progress, _update_error
+
+    if _update_in_progress:
+        return {"started": False, "detail": "Update already in progress"}
+
+    with _update_lock:
+        if _update_in_progress:
+            return {"started": False, "detail": "Update already in progress"}
+        _update_in_progress = True
+        _update_error = ""
+
+        thread = threading.Thread(target=_run_update, daemon=True)
+        thread.start()
+
+    return {"started": True}
 
 
 @app.post("/api/download")

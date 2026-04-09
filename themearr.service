@@ -19,7 +19,8 @@ Restart=on-failure
 RestartSec=5
 
 # Harden the service
-NoNewPrivileges=true
+# Needed so the update endpoint can execute the dedicated sudo updater command.
+NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths=/opt/themearr/data /movies

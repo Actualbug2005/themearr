@@ -16,6 +16,9 @@ const statTotal     = document.getElementById('stat-total');
 const statDone      = document.getElementById('stat-downloaded');
 const statPending   = document.getElementById('stat-pending');
 const toast         = document.getElementById('toast');
+const updateBanner  = document.getElementById('update-banner');
+const updateText    = document.getElementById('update-text');
+const btnUpdate     = document.getElementById('btn-update');
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 let toastTimer = null;
@@ -95,6 +98,91 @@ async function loadMovies() {
     showToast(`Failed to load movies: ${e.message}`, 'error');
   }
 }
+
+/* ── Version / Update ───────────────────────────────────────────────────── */
+let versionState = { current: '', latest: '', updateAvailable: false, updating: false };
+
+async function checkForUpdate() {
+  try {
+    versionState = await api('GET', '/api/version');
+    renderUpdateBanner();
+  } catch (e) {
+    console.warn('Version check failed', e);
+  }
+}
+
+function renderUpdateBanner() {
+  if (versionState.updating) {
+    updateText.textContent = 'Updating app...';
+    btnUpdate.disabled = true;
+    btnUpdate.textContent = 'Updating';
+    updateBanner.classList.remove('hidden');
+    return;
+  }
+
+  if (!versionState.updateAvailable) {
+    updateBanner.classList.add('hidden');
+    btnUpdate.disabled = false;
+    btnUpdate.textContent = 'Update';
+    return;
+  }
+
+  updateText.textContent = `Update available: ${versionState.current} -> ${versionState.latest}`;
+  btnUpdate.disabled = false;
+  btnUpdate.textContent = 'Update';
+  updateBanner.classList.remove('hidden');
+}
+
+async function triggerUpdate() {
+  if (btnUpdate.disabled) return;
+
+  btnUpdate.disabled = true;
+  btnUpdate.textContent = 'Starting...';
+
+  try {
+    const res = await api('POST', '/api/update');
+    if (!res.started) {
+      showToast(res.detail || 'Update already running', 'error');
+      await checkForUpdate();
+      return;
+    }
+
+    showToast('Update started. Waiting for service restart...');
+    versionState.updating = true;
+    renderUpdateBanner();
+    await waitForUpdatedVersion();
+  } catch (e) {
+    showToast(`Update failed to start: ${e.message}`, 'error');
+    btnUpdate.disabled = false;
+    btnUpdate.textContent = 'Update';
+  }
+}
+
+async function waitForUpdatedVersion() {
+  const timeoutMs = 3 * 60 * 1000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const next = await api('GET', '/api/version');
+      versionState = next;
+      renderUpdateBanner();
+      if (!next.updateAvailable && !next.updating && next.latest) {
+        showToast(`Updated to ${next.current}`);
+        setTimeout(() => window.location.reload(), 1200);
+        return;
+      }
+    } catch (_) {
+      // Service may be restarting; keep polling until timeout.
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+
+  showToast('Update timed out. Refresh and check status.', 'error');
+  await checkForUpdate();
+}
+
+btnUpdate?.addEventListener('click', triggerUpdate);
 
 /* ── Sync Radarr ─────────────────────────────────────────────────────────── */
 btnSync.addEventListener('click', async () => {
@@ -241,3 +329,5 @@ function esc(str) {
 
 /* ── Boot ────────────────────────────────────────────────────────────────── */
 loadMovies();
+checkForUpdate();
+setInterval(checkForUpdate, 5 * 60 * 1000);
