@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 import threading
+from collections import deque
 from pathlib import Path
 
 import httpx
@@ -39,6 +40,20 @@ UPDATER_CMD = os.getenv("THEMEARR_UPDATER_CMD", "sudo /usr/local/bin/themearr-up
 _update_lock = threading.Lock()
 _update_in_progress = False
 _update_error = ""
+_update_finished = False
+_update_started_at = ""
+_update_logs: deque[str] = deque(maxlen=300)
+_update_log_lock = threading.Lock()
+
+
+def _update_log(message: str) -> None:
+    with _update_log_lock:
+        _update_logs.append(message.rstrip())
+
+
+def _update_log_lines() -> list[str]:
+    with _update_log_lock:
+        return list(_update_logs)
 
 
 @app.on_event("startup")
@@ -163,19 +178,29 @@ def _latest_main_version() -> str:
 
 
 def _run_update() -> None:
-    global _update_in_progress, _update_error
+    global _update_in_progress, _update_error, _update_finished
     try:
-        subprocess.run(
-            UPDATER_CMD,
+        _update_log(f"Starting update command: {UPDATER_CMD}")
+        proc = subprocess.Popen(
+            f"stdbuf -oL -eL {UPDATER_CMD}",
             shell=True,
-            check=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
         )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            _update_log(line)
+        return_code = proc.wait()
+        _update_log(f"Update command exited with code {return_code}")
+        if return_code != 0:
+            _update_error = f"Update command exited with code {return_code}"
     except Exception as exc:
-        log.exception("Update failed")
         _update_error = str(exc)
+        _update_log(f"Update failed: {exc}")
     finally:
+        _update_finished = True
         _update_in_progress = False
 
 
@@ -204,7 +229,7 @@ def app_version():
 
 @app.post("/api/update")
 def app_update():
-    global _update_in_progress, _update_error
+    global _update_in_progress, _update_error, _update_finished, _update_started_at
 
     if _update_in_progress:
         return {"started": False, "detail": "Update already in progress"}
@@ -214,11 +239,26 @@ def app_update():
             return {"started": False, "detail": "Update already in progress"}
         _update_in_progress = True
         _update_error = ""
+        _update_finished = False
+        _update_started_at = "now"
+        with _update_log_lock:
+            _update_logs.clear()
 
         thread = threading.Thread(target=_run_update, daemon=True)
         thread.start()
 
     return {"started": True}
+
+
+@app.get("/api/update/status")
+def update_status():
+    return {
+        "inProgress": _update_in_progress,
+        "finished": _update_finished,
+        "error": _update_error,
+        "startedAt": _update_started_at,
+        "logs": _update_log_lines(),
+    }
 
 
 @app.post("/api/download")

@@ -19,6 +19,10 @@ const toast         = document.getElementById('toast');
 const updateBanner  = document.getElementById('update-banner');
 const updateText    = document.getElementById('update-text');
 const btnUpdate     = document.getElementById('btn-update');
+const updateModal   = document.getElementById('update-modal');
+const updateModalLogs = document.getElementById('update-modal-logs');
+const updateModalStatus = document.getElementById('update-modal-status');
+const updateModalClose = document.getElementById('update-modal-close');
 const setupScreen   = document.getElementById('setup-screen');
 const appShell      = document.getElementById('app-shell');
 const setupForm     = document.getElementById('setup-form');
@@ -203,6 +207,58 @@ setupForm?.addEventListener('submit', async (event) => {
 /* ── Version / Update ───────────────────────────────────────────────────── */
 let versionState = { current: '', latest: '', updateAvailable: false, updating: false };
 let updatePollTimer = null;
+let updateStatusTimer = null;
+
+function setUpdateModalVisible(isVisible) {
+  if (isVisible) {
+    updateModal.classList.remove('hidden');
+    updateModal.classList.add('flex');
+  } else {
+    updateModal.classList.add('hidden');
+    updateModal.classList.remove('flex');
+  }
+}
+
+function renderUpdateModal(status) {
+  updateModalStatus.textContent = status.inProgress
+    ? 'Updating app and collecting logs...'
+    : status.error
+      ? `Update failed: ${status.error}`
+      : 'Update finished successfully.';
+  updateModalLogs.textContent = (status.logs || []).join('\n');
+  updateModalLogs.scrollTop = updateModalLogs.scrollHeight;
+}
+
+async function refreshUpdateModal() {
+  const status = await api('GET', '/api/update/status');
+  renderUpdateModal(status);
+
+  if (!status.inProgress && updateStatusTimer) {
+    clearInterval(updateStatusTimer);
+    updateStatusTimer = null;
+    btnUpdate.disabled = false;
+    btnUpdate.textContent = 'Upgrade';
+    if (!status.error) {
+      setTimeout(() => window.location.reload(), 1500);
+    }
+  }
+
+  return status;
+}
+
+function startUpdatePolling() {
+  if (updateStatusTimer) return;
+  updateStatusTimer = setInterval(async () => {
+    try {
+      const status = await refreshUpdateModal();
+      if (!status.inProgress && status.error) {
+        showToast(`Update failed: ${status.error}`, 'error');
+      }
+    } catch (e) {
+      console.warn('Failed to refresh update status', e);
+    }
+  }, 1500);
+}
 
 async function checkForUpdate() {
   try {
@@ -217,7 +273,7 @@ function renderUpdateBanner() {
   if (versionState.updating) {
     updateText.textContent = 'Updating app...';
     btnUpdate.disabled = true;
-    btnUpdate.textContent = 'Updating';
+    btnUpdate.textContent = 'Upgrading';
     updateBanner.classList.remove('hidden');
     return;
   }
@@ -225,13 +281,13 @@ function renderUpdateBanner() {
   if (!versionState.updateAvailable) {
     updateBanner.classList.add('hidden');
     btnUpdate.disabled = false;
-    btnUpdate.textContent = 'Update';
+    btnUpdate.textContent = 'Upgrade';
     return;
   }
 
   updateText.textContent = `Update available: ${versionState.current} -> ${versionState.latest}`;
   btnUpdate.disabled = false;
-  btnUpdate.textContent = 'Update';
+  btnUpdate.textContent = 'Upgrade';
   updateBanner.classList.remove('hidden');
 }
 
@@ -240,51 +296,37 @@ async function triggerUpdate() {
 
   btnUpdate.disabled = true;
   btnUpdate.textContent = 'Starting...';
+  setUpdateModalVisible(true);
+  updateModalStatus.textContent = 'Starting upgrade...';
+  updateModalLogs.textContent = '';
 
   try {
     const res = await api('POST', '/api/update');
     if (!res.started) {
       showToast(res.detail || 'Update already running', 'error');
+      updateModalStatus.textContent = res.detail || 'Update already running';
       await checkForUpdate();
       return;
     }
 
-    showToast('Update started. Waiting for service restart...');
+    showToast('Upgrade started. Showing server logs...');
     versionState.updating = true;
     renderUpdateBanner();
-    await waitForUpdatedVersion();
+    await refreshUpdateModal();
+    startUpdatePolling();
   } catch (e) {
     showToast(`Update failed to start: ${e.message}`, 'error');
     btnUpdate.disabled = false;
-    btnUpdate.textContent = 'Update';
+    btnUpdate.textContent = 'Upgrade';
+    updateModalStatus.textContent = `Update failed to start: ${e.message}`;
   }
-}
-
-async function waitForUpdatedVersion() {
-  const timeoutMs = 3 * 60 * 1000;
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const next = await api('GET', '/api/version');
-      versionState = next;
-      renderUpdateBanner();
-      if (!next.updateAvailable && !next.updating && next.latest) {
-        showToast(`Updated to ${next.current}`);
-        setTimeout(() => window.location.reload(), 1200);
-        return;
-      }
-    } catch (_) {
-      // Service may be restarting; keep polling until timeout.
-    }
-    await new Promise(r => setTimeout(r, 5000));
-  }
-
-  showToast('Update timed out. Refresh and check status.', 'error');
-  await checkForUpdate();
 }
 
 btnUpdate?.addEventListener('click', triggerUpdate);
+updateModalClose?.addEventListener('click', () => {
+  if (updateStatusTimer) return;
+  setUpdateModalVisible(false);
+});
 
 /* ── Sync Radarr ─────────────────────────────────────────────────────────── */
 btnSync.addEventListener('click', async () => {

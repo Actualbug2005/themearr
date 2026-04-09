@@ -103,7 +103,7 @@
       <div class="flex items-center gap-3">
         <div id="update-banner" class="hidden items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
           <span id="update-text"></span>
-          <button id="btn-update" class="rounded bg-amber-500 px-2 py-0.5 font-semibold text-black hover:bg-amber-400">Update</button>
+          <button id="btn-update" class="rounded bg-amber-500 px-2 py-0.5 font-semibold text-black hover:bg-amber-400">Upgrade</button>
         </div>
         <span id="sync-status" class="text-sm text-gray-400"></span>
         <button id="btn-sync"
@@ -172,6 +172,23 @@
   <div id="toast"
        class="fixed bottom-6 right-6 z-50 hidden px-4 py-3 rounded-lg shadow-xl
               text-sm font-medium transition-all duration-300">
+  </div>
+
+  <div id="update-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 px-4 py-6">
+    <div class="w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-gray-950 shadow-2xl shadow-black/60">
+      <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+        <div>
+          <h3 class="text-lg font-bold text-white">Updating Themearr</h3>
+          <p id="update-modal-status" class="mt-1 text-sm text-gray-400">Preparing update…</p>
+        </div>
+        <button id="update-modal-close" type="button" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-gray-100 transition hover:bg-white/10">
+          Close
+        </button>
+      </div>
+      <div class="bg-black px-5 py-4">
+        <pre id="update-modal-logs" class="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-white/10 bg-gray-900 p-4 text-xs leading-5 text-green-200"></pre>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
