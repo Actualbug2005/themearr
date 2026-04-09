@@ -35,5 +35,5 @@ bash install.sh
 rm -rf "$SRC_DIR"
 
 echo ">>> Deployment Complete!"
-echo ">>> Action Required: Configure /opt/themearr/.env with your Radarr credentials and RADARR_PATH_MAP."
-echo ">>> Then run: systemctl restart themearr"
+echo ">>> Open the web UI to finish setup for Radarr, API key, and path mappings."
+echo ">>> Then use the UI update flow whenever a new GHCR package is published."

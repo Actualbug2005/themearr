@@ -71,7 +71,6 @@ echo "────────────────────────�
 echo "✔ Deployment Complete."
 echo "  Container ID: $CTID"
 echo "  Container IP:" $(pct exec $CTID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-echo "  Action Required: Run 'pct exec $CTID -- nano /opt/themearr/.env' to set API keys and path mappings."
-echo "  Example path mapping: RADARR_PATH_MAP=/radarr/media=/movies"
-echo "  Then run: 'pct exec $CTID -- systemctl restart themearr'"
+echo "  Action Required: Open the web UI to complete setup for Radarr, API key, and path mappings."
+echo "  Example path mapping: /radarr/media -> /movies"
 echo "─────────────────────────────────────────────────────────────────"

@@ -8,10 +8,22 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from youtube_search import YoutubeSearch
 
-from app.database import init_db, upsert_movies, get_all_movies, get_movie, set_status
+from app.database import (
+    init_db,
+    upsert_movies,
+    get_all_movies,
+    get_movie,
+    set_status,
+    get_setting,
+    set_setting,
+    get_path_mappings,
+    set_path_mappings,
+    is_setup_complete,
+    mark_setup_complete,
+)
 from app.radarr import fetch_movies
 
 logging.basicConfig(level=logging.INFO)
@@ -34,16 +46,58 @@ def startup():
     init_db()
 
 
+def _setup_payload() -> dict:
+    return {
+        "setupComplete": is_setup_complete(),
+        "radarrUrl": get_setting("radarr_url", ""),
+        "radarrApiKeySet": bool(get_setting("radarr_api_key", "").strip()),
+        "pathMappings": get_path_mappings(),
+    }
+
+
 # ── API ──────────────────────────────────────────────────────────────────────
 
 @app.post("/api/sync")
 async def sync_radarr():
+    if not is_setup_complete():
+        raise HTTPException(status_code=400, detail="App setup is not complete")
+
     try:
         movies = await fetch_movies()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Radarr error: {exc}")
     upsert_movies(movies)
     return {"synced": len(movies)}
+
+
+@app.get("/api/setup/status")
+def setup_status():
+    return _setup_payload()
+
+
+class PathMapping(BaseModel):
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+
+
+class SetupRequest(BaseModel):
+    radarr_url: str = Field(min_length=1)
+    radarr_api_key: str = ""
+    path_mappings: list[PathMapping] = Field(default_factory=list)
+
+
+@app.post("/api/setup")
+def save_setup(req: SetupRequest):
+    existing_key = get_setting("radarr_api_key", "").strip()
+    api_key = req.radarr_api_key.strip() or existing_key
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Radarr API key is required")
+
+    set_setting("radarr_url", req.radarr_url.strip())
+    set_setting("radarr_api_key", api_key)
+    set_path_mappings([mapping.model_dump() for mapping in req.path_mappings])
+    mark_setup_complete()
+    return _setup_payload()
 
 
 @app.get("/api/movies")

@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from contextlib import contextmanager
 
 DB_PATH = os.getenv("DB_PATH", "/opt/themearr/data/themearr.db")
@@ -15,6 +16,12 @@ def init_db():
                 year        INTEGER,
                 folderName  TEXT,
                 status      TEXT NOT NULL DEFAULT 'pending'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -46,12 +53,37 @@ def upsert_movies(movies: list[dict]):
         conn.commit()
 
 
+def _movie_folder_exists(folder_name: str | None) -> bool:
+    return bool(folder_name) and os.path.isdir(folder_name)
+
+
+def _theme_file_exists(folder_name: str | None) -> bool:
+    if not _movie_folder_exists(folder_name):
+        return False
+    return os.path.isfile(os.path.join(folder_name, "theme.mp3"))
+
+
+def _hydrate_movie_row(row: sqlite3.Row) -> dict | None:
+    movie = dict(row)
+    folder_name = movie.get("folderName") or ""
+    if not _movie_folder_exists(folder_name):
+        return None
+
+    movie["status"] = "downloaded" if _theme_file_exists(folder_name) else "pending"
+    return movie
+
+
 def get_all_movies() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, title, year, folderName, status FROM movies ORDER BY status, title"
         ).fetchall()
-        return [dict(r) for r in rows]
+        movies = []
+        for row in rows:
+          movie = _hydrate_movie_row(row)
+          if movie:
+              movies.append(movie)
+        return movies
 
 
 def get_movie(movie_id: int) -> dict | None:
@@ -60,10 +92,66 @@ def get_movie(movie_id: int) -> dict | None:
             "SELECT id, title, year, folderName, status FROM movies WHERE id = ?",
             (movie_id,),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+
+        return _hydrate_movie_row(row)
 
 
 def set_status(movie_id: int, status: str):
     with get_conn() as conn:
         conn.execute("UPDATE movies SET status = ? WHERE id = ?", (status, movie_id))
         conn.commit()
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+
+def set_setting(key: str, value: str):
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+        conn.commit()
+
+
+def get_path_mappings() -> list[dict]:
+    raw = get_setting("path_mappings", "[]")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+
+    result = []
+    for item in data:
+        source = str(item.get("source", "")).strip().rstrip("/")
+        target = str(item.get("target", "")).strip().rstrip("/")
+        if source and target:
+            result.append({"source": source, "target": target})
+    return result
+
+
+def set_path_mappings(mappings: list[dict]):
+    normalized = []
+    for item in mappings:
+        source = str(item.get("source", "")).strip().rstrip("/")
+        target = str(item.get("target", "")).strip().rstrip("/")
+        if source and target:
+            normalized.append({"source": source, "target": target})
+    set_setting("path_mappings", json.dumps(normalized))
+
+
+def is_setup_complete() -> bool:
+    return get_setting("setup_complete", "0") == "1"
+
+
+def mark_setup_complete():
+    set_setting("setup_complete", "1")

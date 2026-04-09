@@ -12,6 +12,7 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3-venv \
     python3-pip \
+    sudo \
     ffmpeg \
     curl
 
@@ -65,18 +66,12 @@ systemctl restart themearr
 EOF
 chmod 755 /usr/local/bin/themearr-update
 
-# Allow service user to run only the dedicated updater command without a password.
+# Allow the service user to run only the dedicated updater command without a password.
 mkdir -p /etc/sudoers.d
 cat > /etc/sudoers.d/themearr-update <<'EOF'
 themearr ALL=(root) NOPASSWD: /usr/local/bin/themearr-update
 EOF
 chmod 440 /etc/sudoers.d/themearr-update
-
-# Create .env from example if one doesn't exist yet
-if [ ! -f "${APP_DIR}/.env" ]; then
-    cp .env.example "${APP_DIR}/.env"
-    echo "  → Created ${APP_DIR}/.env — edit it before starting the service."
-fi
 
 # Python virtual environment
 python3 -m venv "${APP_DIR}/venv"
@@ -94,6 +89,6 @@ systemctl enable themearr.service
 
 echo ""
 echo "✔  Installation complete."
-echo "   Edit ${APP_DIR}/.env (API keys + RADARR_PATH_MAP), then run: systemctl start themearr"
+echo "   Open the web UI to complete the first-run setup for Radarr, API key, and path mappings."
 echo "   App updates can be triggered from the UI when a new GHCR package is published."
 echo "   Logs:                            journalctl -u themearr -f"

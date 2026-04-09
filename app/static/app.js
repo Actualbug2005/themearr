@@ -19,6 +19,14 @@ const toast         = document.getElementById('toast');
 const updateBanner  = document.getElementById('update-banner');
 const updateText    = document.getElementById('update-text');
 const btnUpdate     = document.getElementById('btn-update');
+const setupScreen   = document.getElementById('setup-screen');
+const appShell      = document.getElementById('app-shell');
+const setupForm     = document.getElementById('setup-form');
+const setupStatus   = document.getElementById('setup-status');
+const setupRadarrUrl = document.getElementById('setup-radarr-url');
+const setupRadarrApiKey = document.getElementById('setup-radarr-api-key');
+const setupMappings = document.getElementById('setup-mappings');
+const setupAddMapping = document.getElementById('setup-add-mapping');
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 let toastTimer = null;
@@ -32,6 +40,67 @@ function showToast(msg, type = 'success') {
       : 'bg-red-600 text-white',
   ].join(' ');
   toastTimer = setTimeout(() => { toast.classList.add('hidden'); }, 4000);
+}
+
+function setAppVisible(isVisible) {
+  if (isVisible) {
+    setupScreen.classList.add('hidden');
+    appShell.classList.remove('hidden');
+  } else {
+    appShell.classList.add('hidden');
+    setupScreen.classList.remove('hidden');
+  }
+}
+
+function createMappingRow(source = '', target = '') {
+  const row = document.createElement('div');
+  row.className = 'mapping-row grid gap-3 sm:grid-cols-[1fr_1fr_auto]';
+  row.innerHTML = `
+    <input type="text" class="mapping-source rounded-xl border border-white/10 bg-gray-950 px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40" placeholder="/radarr/movies" value="${esc(source)}" />
+    <input type="text" class="mapping-target rounded-xl border border-white/10 bg-gray-950 px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40" placeholder="/movies" value="${esc(target)}" />
+    <button type="button" class="mapping-remove rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-gray-200 transition hover:bg-white/10">Remove</button>
+  `;
+  row.querySelector('.mapping-remove').addEventListener('click', () => {
+    row.remove();
+    if (!setupMappings.children.length) {
+      setupMappings.appendChild(createMappingRow());
+    }
+  });
+  return row;
+}
+
+function renderMappingRows(mappings = []) {
+  setupMappings.innerHTML = '';
+  if (!mappings.length) {
+    setupMappings.appendChild(createMappingRow());
+    return;
+  }
+  mappings.forEach(mapping => setupMappings.appendChild(createMappingRow(mapping.source, mapping.target)));
+}
+
+function collectMappings() {
+  return Array.from(setupMappings.querySelectorAll('.mapping-row'))
+    .map(row => ({
+      source: row.querySelector('.mapping-source').value.trim(),
+      target: row.querySelector('.mapping-target').value.trim(),
+    }))
+    .filter(mapping => mapping.source && mapping.target);
+}
+
+async function loadSetupState() {
+  const state = await api('GET', '/api/setup/status');
+  if (!state.setupComplete) {
+    setupRadarrUrl.value = state.radarrUrl || 'http://radarr:7878';
+    setupRadarrApiKey.value = '';
+    setupRadarrApiKey.placeholder = state.radarrApiKeySet ? 'Leave blank to keep existing key' : 'Enter your Radarr API key';
+    renderMappingRows(state.pathMappings || []);
+    setAppVisible(false);
+    setupStatus.textContent = 'Complete the fields below to finish setup.';
+    return false;
+  }
+
+  setAppVisible(true);
+  return true;
 }
 
 /* ── API helpers ─────────────────────────────────────────────────────────── */
@@ -99,8 +168,41 @@ async function loadMovies() {
   }
 }
 
+setupAddMapping?.addEventListener('click', () => {
+  setupMappings.appendChild(createMappingRow());
+});
+
+setupForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setupStatus.textContent = 'Saving setup...';
+
+  try {
+    const payload = {
+      radarr_url: setupRadarrUrl.value.trim(),
+      radarr_api_key: setupRadarrApiKey.value.trim(),
+      path_mappings: collectMappings(),
+    };
+    const state = await api('POST', '/api/setup', payload);
+    setupStatus.textContent = 'Setup saved. Loading app...';
+    setAppVisible(true);
+    versionState = { current: '', latest: '', updateAvailable: false, updating: false };
+    await loadMovies();
+    await checkForUpdate();
+    if (!updatePollTimer) {
+      updatePollTimer = setInterval(checkForUpdate, 5 * 60 * 1000);
+    }
+    if (state.setupComplete) {
+      showToast('Setup complete');
+    }
+  } catch (e) {
+    setupStatus.textContent = '';
+    showToast(`Setup failed: ${e.message}`, 'error');
+  }
+});
+
 /* ── Version / Update ───────────────────────────────────────────────────── */
 let versionState = { current: '', latest: '', updateAvailable: false, updating: false };
+let updatePollTimer = null;
 
 async function checkForUpdate() {
   try {
@@ -328,6 +430,16 @@ function esc(str) {
 }
 
 /* ── Boot ────────────────────────────────────────────────────────────────── */
-loadMovies();
-checkForUpdate();
-setInterval(checkForUpdate, 5 * 60 * 1000);
+async function bootstrap() {
+  const isReady = await loadSetupState();
+  if (!isReady) return;
+
+  await loadMovies();
+  await checkForUpdate();
+
+  if (!updatePollTimer) {
+    updatePollTimer = setInterval(checkForUpdate, 5 * 60 * 1000);
+  }
+}
+
+bootstrap();

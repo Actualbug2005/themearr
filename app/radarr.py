@@ -1,33 +1,12 @@
-import os
 import httpx
 
-RADARR_URL = os.getenv("RADARR_URL", "http://localhost:7878")
-RADARR_API_KEY = os.getenv("RADARR_API_KEY", "")
-RADARR_PATH_MAP = os.getenv("RADARR_PATH_MAP", "")
-
-
-def _parse_path_mappings(raw: str) -> list[tuple[str, str]]:
-    mappings = []
-    if not raw:
-        return mappings
-
-    for pair in raw.split(";"):
-        pair = pair.strip()
-        if not pair or "=" not in pair:
-            continue
-        src, dst = pair.split("=", 1)
-        src = src.strip().rstrip("/")
-        dst = dst.strip().rstrip("/")
-        if src and dst:
-            mappings.append((src, dst))
-    return mappings
-
-
-PATH_MAPPINGS = _parse_path_mappings(RADARR_PATH_MAP)
+from app.database import get_setting, get_path_mappings
 
 
 def _apply_path_mapping(path: str) -> str:
-    for src, dst in PATH_MAPPINGS:
+    for item in get_path_mappings():
+        src = item["source"]
+        dst = item["target"]
         if path == src:
             return dst
         if path.startswith(src + "/"):
@@ -36,9 +15,15 @@ def _apply_path_mapping(path: str) -> str:
 
 
 async def fetch_movies() -> list[dict]:
-    url = f"{RADARR_URL.rstrip('/')}/api/v3/movie"
+    radarr_url = get_setting("radarr_url", "").strip()
+    radarr_api_key = get_setting("radarr_api_key", "").strip()
+
+    if not radarr_url or not radarr_api_key:
+        raise RuntimeError("Radarr settings have not been configured")
+
+    url = f"{radarr_url.rstrip('/')}/api/v3/movie"
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, params={"apikey": RADARR_API_KEY})
+        resp = await client.get(url, params={"apikey": radarr_api_key})
         resp.raise_for_status()
         data = resp.json()
 

@@ -8,7 +8,6 @@ User=themearr
 Group=themearr
 
 WorkingDirectory=/opt/themearr
-EnvironmentFile=/opt/themearr/.env
 
 ExecStart=/opt/themearr/venv/bin/python -m uvicorn app.main:app \
     --host 0.0.0.0 \
@@ -18,12 +17,7 @@ ExecStart=/opt/themearr/venv/bin/python -m uvicorn app.main:app \
 Restart=on-failure
 RestartSec=5
 
-# Harden the service
-# Needed so the update endpoint can execute the dedicated sudo updater command.
-NoNewPrivileges=false
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/opt/themearr/data /movies
+# Keep service options minimal for LXC compatibility.
 
 [Install]
 WantedBy=multi-user.target
