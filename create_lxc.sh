@@ -58,6 +58,9 @@ pct start $CTID
 echo "[5/6] Waiting for network initialisation..."
 sleep 10
 
+# Ensure root has no password set by default.
+pct exec $CTID -- passwd -d root >/dev/null 2>&1 || true
+
 # ── 6. Application Injection ──────────────────────────────────────────────────
 echo "[6/6] Executing Application Installer inside LXC..."
 

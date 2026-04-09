@@ -34,7 +34,6 @@ if ! id -u "${APP_USER}" > /dev/null 2>&1; then
         --gid "${APP_GID}" \
         --no-create-home \
         --shell /usr/sbin/nologin \
-        --system \
         "${APP_USER}"
 else
     # User exists — enforce the correct UID/GID
@@ -67,6 +66,7 @@ EOF
 chmod 755 /usr/local/bin/themearr-update
 
 # Allow service user to run only the dedicated updater command without a password.
+mkdir -p /etc/sudoers.d
 cat > /etc/sudoers.d/themearr-update <<'EOF'
 themearr ALL=(root) NOPASSWD: /usr/local/bin/themearr-update
 EOF
