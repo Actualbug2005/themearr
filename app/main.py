@@ -9,8 +9,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from youtube_search import YoutubeSearch
 
-from database import init_db, upsert_movies, get_all_movies, get_movie, set_status
-from radarr import fetch_movies
+from app.database import init_db, upsert_movies, get_all_movies, get_movie, set_status
+from app.radarr import fetch_movies
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("themearr")
