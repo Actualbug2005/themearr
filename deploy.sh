@@ -9,23 +9,29 @@ echo ">>> Starting Themearr Deployment..."
 apt-get update -qq
 apt-get install -y git -qq
 
-# 2. Prepare the installation directory
-INSTALL_DIR="/opt/themearr"
-if [ -d "$INSTALL_DIR" ]; then
-    echo ">>> Cleaning up existing installation..."
-    rm -rf "$INSTALL_DIR"
+# 2. Prepare a temporary source directory
+SRC_DIR="/tmp/themearr_source"
+if [ -d "$SRC_DIR" ]; then
+    rm -rf "$SRC_DIR"
 fi
 
-# 3. Clone the repository directly from your GitHub
+# 3. Clone the repository to the temporary zone
 echo ">>> Cloning repository..."
-# REPLACE THE URL BELOW WITH YOUR ACTUAL GITHUB REPO URL
-git clone https://github.com/Actuallbug2005/themearr.git "$INSTALL_DIR"
+git clone https://github.com/Actuallbug2005/themearr.git "$SRC_DIR"
 
-# 4. Execute the native installation script
+# 4. Safely wipe old application code (preserves database and .env)
+echo ">>> Preparing target directory..."
+rm -rf /opt/themearr/app
+rm -f /opt/themearr/requirements.txt
+
+# 5. Execute the native installation script
 echo ">>> Executing native installer..."
-cd "$INSTALL_DIR"
+cd "$SRC_DIR"
 chmod +x install.sh
 bash install.sh
+
+# 6. Clean up temporary files
+rm -rf "$SRC_DIR"
 
 echo ">>> Deployment Complete!"
 echo ">>> Action Required: Configure /opt/themearr/.env with your Radarr credentials."
